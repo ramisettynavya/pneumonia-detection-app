@@ -86,7 +86,9 @@ html, body, [class*="css"], .stApp { font-family: 'Inter', sans-serif; }
 .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] { display:none; }
 
 /* report blocks */
-.rb { background:#fff; border:1px solid #E1E9F2; border-left:5px solid #0F6CBD; border-radius:14px; padding:16px 20px; margin-bottom:12px; }
+.rb h4, .rb p { margin-top:0 !important; margin-bottom:4px !important; padding:0 !important; }
+.rb ul { margin:2px 0 0 !important; }
+.rb { background:#fff; border:1px solid #E1E9F2; border-left:5px solid #0F6CBD; border-radius:14px; padding:13px 20px; margin-bottom:10px; }
 .rb h4 { margin:0 0 6px; font-size:.98rem; color:#0B2545; font-weight:700; }
 .rb p { margin:0 0 6px; } .rb p, .rb li { color:#33475B; font-size:.93rem; line-height:1.55; }
 .rb ul { margin:0; padding-left:20px; }
@@ -126,23 +128,35 @@ def md_inline(text):
 
 
 def report_blocks(md):
-    """Turn the markdown report into styled cards, one per section."""
-    parts = re.split(r"^#{2,4}\s+", md.strip(), flags=re.M)
-    html = []
-    for part in parts:
-        if not part.strip():
+    """Turn the report text into styled cards.
+    A line that starts with **Label** (optionally after "- ") opens a new card;
+    "- " lines are bullets and other lines are paragraphs of the current card."""
+    cards = []  # each: [title, paragraphs, bullets]
+    for raw in md.strip().splitlines():
+        line = raw.strip()
+        if not line:
             continue
-        title, _, body = part.partition("\n")
-        title = title.strip().strip("*").strip()
-        lines = [l.strip() for l in body.strip().splitlines() if l.strip()]
-        bullets = [l.lstrip("-*• ").strip() for l in lines if l[:1] in "-*•"]
-        paras = [l for l in lines if l[:1] not in "-*•"]
+        body = line[2:].strip() if line[:2] in ("- ", "* ", "• ") else line
+        is_bullet = body is not line
+        m = re.match(r"^\*\*(.+?)\*\*:?\s*(.*)$", body)
+        if m:
+            title = m.group(1).strip().rstrip(":.").strip()
+            rest = m.group(2).strip()
+            cards.append([title, [rest] if rest else [], []])
+        elif cards and is_bullet:
+            cards[-1][2].append(body)
+        elif cards:
+            cards[-1][1].append(body)
+        else:
+            cards.append(["Result", [body], []])
+    html = []
+    for title, paras, bullets in cards:
         inner = "".join(f"<p>{md_inline(p)}</p>" for p in paras)
         if bullets:
-            inner += "<ul>" + "".join(f"<li>{md_inline(b)}</li>" for b in bullets) + "</ul>"
+            inner += "<ul>" + "".join(f"<li>{md_inline(x)}</li>" for x in bullets) + "</ul>"
         t = title.lower()
-        cls = ("urgent" if "urgent" in t or "emergency" in t else
-               "doctor" if "doctor" in t or "consult" in t else
+        cls = ("urgent" if "urgent" in t else
+               "doctor" if "consult" in t or "next steps" in t else
                "prec" if "precaution" in t else
                "sug" if "suggestion" in t else "")
         html.append(f'<div class="rb {cls}"><h4>{title}</h4>{inner}</div>')
